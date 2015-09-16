@@ -31,14 +31,16 @@
     <material>Gazebo/Orange</material>
   </gazebo>
 
-
- <gazebo reference="camera_link">
+<gazebo reference="camera_frame">
+    <material>Gazebo/Red</material>
+</gazebo>
+ <gazebo reference="camera_frame">
     <mu1>0.2</mu1>
     <mu2>0.2</mu2>
-    <material>Gazebo/Red</material>
     <sensor type="multicamera" name="stereo_camera">
       <update_rate>30.0</update_rate>
       <camera name="left">
+        <pose>0 0 0 0 -1.5707 0</pose>
         <horizontal_fov>1.6929694</horizontal_fov>
         <image>
           <width>640</width>
@@ -56,7 +58,7 @@
         </noise>
       </camera>
       <camera name="right">
-        <pose>0 -0.12 0 0 0 0</pose>
+        <pose>0 -0.12 0 0 -1.5707 0</pose>
         <horizontal_fov>1.6929694</horizontal_fov>
         <image>
           <width>640</width>

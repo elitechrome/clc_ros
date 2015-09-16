@@ -132,7 +132,7 @@ bool CLC::CalcCLC(Vector3d &trans, Quaternion<double> &q)
         rho = M_PI * 2 + rho;
     double phi = acos(cos(theta0)*cos(theta1) + sin(theta0)*sin(theta1)*cos(rho));
     cout<<"Crossing Angle : "<<phi<<endl;
-    
+    d=1;
     Point3d pc(d *cos(theta0)*sin(phi) / sin(phi), -d *cos(theta0)*cos(phi) + cos(theta1) / sin(phi), d *sin(theta0)*sin(theta1)*sin(rho) / sin(phi));
     cout << "Principle point :\n" << pc << endl;
         

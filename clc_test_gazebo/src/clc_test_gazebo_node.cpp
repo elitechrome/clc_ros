@@ -2,15 +2,16 @@
 #include <image_transport/image_transport.h>
 #include <opencv2/highgui/highgui.hpp>
 #include <cv_bridge/cv_bridge.h>
+#include <tf/transform_listener.h>
 #include "CLC.h"
 
 void imageCallback(const sensor_msgs::ImageConstPtr& msg)
 {
     try
     {
-        vector<vector<Point2f> > squares;
-        Mat original_image = cv_bridge::toCvShare(msg, "bgr8")->image;
-        Mat image;
+        std::vector<vector<Point2f> > squares;
+        cv::Mat original_image = cv_bridge::toCvShare(msg, "bgr8")->image;
+        cv::Mat image;
         original_image.copyTo(image);
         resize(image, image, Size(640, 480), 0, 0, INTER_LINEAR);
         CLC clc;
@@ -32,48 +33,63 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
         double cx = 320;
         double cy = 240;
         cv::Mat intrinsic = (cv::Mat_<double>(3, 3) <<
-            fx,  0, cx,
-             0, fy, cy,
-             0,  0,  1
-        );
+                             fx,  0, cx,
+                              0, fy, cy,
+                              0,  0,  1
+                         );
 
-        // Extrinsic
-
-        //Rodrigues(rvec, R);
-        cv::Mat R = (cv::Mat_<double>(3, 3) <<
-             1,  0,  0,
-             0,  1,  0,
-             0,  0,  1
-        );
-        cv::Mat tvec = (cv::Mat_<double>(3, 1) << 0,0,1);
-        //Todo: get the rotation matrix from TF
+         // Extrinsic
         cv::Mat extrinsic = (cv::Mat_<double>(3, 4) <<
-                             1,  0,  0, 0,
-                             0,  1,  0, 0,
-                             0,  0,  1, 0);
+                              1,  0,  0, 0,
+                              0,  1,  0, 0,
+                              0,  0,  1, 0);
+        //Get TF
+        tf::TransformListener listener;
+        tf::StampedTransform transform;
+        try{
+            ros::Time now = ros::Time(0);
+            listener.waitForTransform("/camera_frame", "/rect", now, ros::Duration(1));
+            listener.lookupTransform("/camera_frame", "/rect", now, transform);
+            tf::Matrix3x3 rot = transform.getBasis();
+            tf::Vector3 trans = transform.getOrigin();
 
-        R.copyTo(extrinsic.rowRange(0, 3).colRange(0, 3));
-        tvec.copyTo(extrinsic.rowRange(0, 3).col(3));
+            cv::Mat R = (cv::Mat_<double>(3, 3) <<
+            rot[0][0], rot[0][1], rot[0][2],
+            rot[1][0], rot[1][1], rot[1][2],
+            rot[2][0], rot[2][1], rot[2][2]
+            );
+            std::cout << R <<rot.determinant()<< std::endl;
+            cv::Mat tvec = (cv::Mat_<double>(3, 1) << trans[0],trans[1],trans[2]);
+            R.copyTo(extrinsic.rowRange(0, 3).colRange(0, 3));
+            tvec.copyTo(extrinsic.rowRange(0, 3).col(3));
+
+        }
+        catch (tf::TransformException ex){
+            ROS_ERROR("%s",ex.what());
+            ros::Duration(1.0).sleep();
+        }
+
         //std::cout << extrinsic <<std::endl;
 
         U1 = intrinsic * extrinsic * V1;
         U2 = intrinsic * extrinsic * V2;
         U3 = intrinsic * extrinsic * V3;
         U4 = intrinsic * extrinsic * V4;
-        U1/=U1.at<double>(2,0);
-        U2/=U2.at<double>(2,0);
-        U3/=U3.at<double>(2,0);
-        U4/=U4.at<double>(2,0);
+        U1/=U1.at<double>(2, 0);
+        U2/=U2.at<double>(2, 0);
+        U3/=U3.at<double>(2, 0);
+        U4/=U4.at<double>(2, 0);
+
         vector<Point2f> tmp_square;
         tmp_square.push_back(Point2f(U1.at<double>(0,0),U1.at<double>(1,0)));
         tmp_square.push_back(Point2f(U2.at<double>(0,0),U2.at<double>(1,0)));
         tmp_square.push_back(Point2f(U3.at<double>(0,0),U3.at<double>(1,0)));
         tmp_square.push_back(Point2f(U4.at<double>(0,0),U4.at<double>(1,0)));
         squares.push_back(tmp_square);
-        std::cout << intrinsic  <<std::endl << extrinsic  <<std::endl << V1 <<std::endl;
-        // camera position
+        std::cout << extrinsic  <<std::endl << V1 <<std::endl;
+
         std::cout<< U1<<std::endl;
-        //clc.drawSquares(image, squares);
+        clc.drawSquares(image, squares);
         for(int i =0; i < squares.size();i++)
         {
             vector<Point2f> tmp_square;
@@ -101,12 +117,10 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "clc_test_gazebo");
     ros::NodeHandle nh;
     cv::namedWindow("view");
-    cv::namedWindow("bin");
     cv::startWindowThread();
     image_transport::ImageTransport it(nh);
     image_transport::Subscriber sub = it.subscribe("/multisense_sl/camera/left/image_raw", 1, imageCallback);
 
-   ros::spin();
-    //cv::destroyWindow("view");
+    ros::spin();
     cv::destroyAllWindows();
 }
