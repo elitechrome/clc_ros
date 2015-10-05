@@ -141,15 +141,17 @@ bool CLC::CalcCLC(Vector3d &trans, Quaternion<double> &q)
     Point2f us0, us1;
     us0 = GetIntersectPoint(u0, om, um, wd1);
     us1 = GetIntersectPoint(u1, om, um, wd0);
-        
+
+    double m=0.1818175;
+
     s0 = GetDistance(us0, um) / l0;
     s1 = GetDistance(us1, um) / l1;
+
+    t0 = s0*m*(l0 + l2) / (s0*m*l0 + ((1 - s0)*m+m)*l2);
+    t0 = s1*m*(l1 + l3) / (s1*m*l1 + ((1 - s1)*m+m)*l3);
         
-    t0 = s0*(l0 + l2) / (s0*l0 + (2 - s0)*l2);
-    t1 = s1*(l0 + l3) / (s1*l1 + (2 - s1)*l3);
-        
-    vecTranslate.x = (t0 + t1)*cos(phi);
-    vecTranslate.y = (t0 + t1)*sin(phi);
+    vecTranslate.x = t0 + t1*cos(phi);
+    vecTranslate.y = (t1)*sin(phi);
     
     trans[0]=pc.x;
     trans[1]=pc.y;
@@ -179,7 +181,7 @@ void CLC::Visualization(cv::Mat &out)
     circle(out, quadOffCentered.points[2], 5, cv::Scalar(0, 255, 0), 4, 5);
     circle(out, quadOffCentered.points[3], 5, cv::Scalar(0, 255, 0), 4, 5);
     circle(out, um, 5, cv::Scalar(255, 0, 255), 4, 5);
-/*
+
     line(out, quadCentered.points[0], quadCentered.points[1], Scalar(0,255,255));
     line(out, quadCentered.points[1], quadCentered.points[2], Scalar(0,255,255));
     line(out, quadCentered.points[2], quadCentered.points[3], Scalar(0,255,255));
@@ -189,7 +191,7 @@ void CLC::Visualization(cv::Mat &out)
     circle(out, quadCentered.points[0], 5, cv::Scalar(0, 255, 255), 4, 5);
     circle(out, quadCentered.points[1], 5, cv::Scalar(0, 255, 255), 4, 5);
     circle(out, quadCentered.points[2], 5, cv::Scalar(0, 255, 255), 4, 5);
-    circle(out, quadCentered.points[3], 5, cv::Scalar(0, 255, 255), 4, 5);*/
+    circle(out, quadCentered.points[3], 5, cv::Scalar(0, 255, 255), 4, 5);
     circle(out, om, 5, cv::Scalar(255, 255, 0), 4, 5);
     
 }
