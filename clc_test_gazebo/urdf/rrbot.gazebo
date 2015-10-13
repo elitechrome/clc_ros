@@ -58,7 +58,7 @@
         </noise>
       </camera>
       <camera name="right">
-        <pose>0 -0.12 0 0 0 0</pose>
+        <pose>0.12 0 0 0 -1.570796327 1.570796327</pose>
         <horizontal_fov>1.6929694</horizontal_fov>
         <image>
           <width>640</width>
