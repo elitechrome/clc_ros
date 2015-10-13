@@ -1,0 +1,24 @@
+#IncludeRegexLine: ^[ 	]*#[ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/a/clc_ws/src/clc_ros/clc_test_gazebo/lsd/lsd.c
+stdio.h
+-
+stdlib.h
+-
+math.h
+-
+limits.h
+-
+float.h
+-
+lsd.h
+/home/a/clc_ws/src/clc_ros/clc_test_gazebo/lsd/lsd.h
+
+/home/a/clc_ws/src/clc_ros/clc_test_gazebo/lsd/lsd.h
+

@@ -1,10 +1,12 @@
 #include <iostream>
 #include <opencv2/opencv.hpp>
+extern "C"{
 #include "lsd.h"
- 
+}
+
 cv::Mat img;
 int n_lines;
-double* lines;　
+double* lines;
  
 void change_th_lsd(int nfa, void* dummy)
 {

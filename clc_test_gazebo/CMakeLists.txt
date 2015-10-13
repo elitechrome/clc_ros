@@ -98,17 +98,17 @@ catkin_package(
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
-include_directories(include)
+include_directories(include lsd)
 include_directories(
   ${catkin_INCLUDE_DIRS} ${Eigen_INCLUDE_DIRS}
 )
 
 ## Declare a cpp library
 add_library(clc src/CLC.cpp)
-
+add_library(lsd lsd/lsd.c)
 ## Declare a cpp executable
 add_executable(clc_test_gazebo_node src/clc_test_gazebo_node.cpp)
-
+add_executable(lsd_opencv lsd/lsd_opencv.cpp)
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 # add_dependencies(clc_test_gazebo_node clc_test_gazebo_generate_messages_cpp)
@@ -117,7 +117,9 @@ add_executable(clc_test_gazebo_node src/clc_test_gazebo_node.cpp)
 target_link_libraries(clc_test_gazebo_node clc
   ${catkin_LIBRARIES}
 )
-
+target_link_libraries(lsd_opencv lsd
+  ${catkin_LIBRARIES}
+)
 #############
 ## Install ##
 #############
