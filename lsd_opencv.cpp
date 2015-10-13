@@ -2,7 +2,7 @@
 #include <opencv2/opencv.hpp>
 #include "lsd.h"
  
-cv::Mat img;
+ cv::Mat img;
 int n_lines;
 double* lines;　
  
