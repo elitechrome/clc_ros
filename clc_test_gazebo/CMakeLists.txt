@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
 )
 find_package(cmake_modules REQUIRED)
 find_package(Eigen REQUIRED)
+find_package(OpenCV)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -114,6 +115,9 @@ add_executable(lsd_opencv lsd/lsd_opencv.cpp)
 # add_dependencies(clc_test_gazebo_node clc_test_gazebo_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
+target_link_libraries(clc
+  ${OpenCV_LIBS}
+)
 target_link_libraries(clc_test_gazebo_node clc
   ${catkin_LIBRARIES}
 )

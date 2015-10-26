@@ -3,22 +3,60 @@ bool _compare_min_x(Point2f const &p1, Point2f const &p2) { return p1.x < p2.x; 
 bool _compare_min_y(Point2f const &p1, Point2f const &p2) { return p1.y < p2.y; }
 CLC::CLC()
 {
+    fx = 283.11208;
+    fy = 283.11208;
+    cx = 320;
+    cy = 240;
     um =Point2d(320,240);
-    thresh = 40;
-    N = 1;
 }
 bool Quadrilateral::SortPoints()
 {
-    Point2d min_x = *std::min_element(points.begin(), points.end(), &_compare_min_x);
-    Point2d min_y = *std::min_element(points.begin(), points.end(), &_compare_min_y);
-    Point2d max_x = *std::max_element(points.begin(), points.end(), &_compare_min_x);
-    Point2d max_y = *std::max_element(points.begin(), points.end(), &_compare_min_y);
-    
+//    Point2d min_x = *std::min_element(points.begin(), points.end(), &_compare_min_x);
+//    Point2d min_y = *std::min_element(points.begin(), points.end(), &_compare_min_y);
+//    Point2d max_x = *std::max_element(points.begin(), points.end(), &_compare_min_x);
+//    Point2d max_y = *std::max_element(points.begin(), points.end(), &_compare_min_y);
+    if(points.size()!=4){
+        std::cout<<"The number of Points is must be 4"<<std::endl;
+        return false;
+    }
+    Point2d center;
+    Point2d bottom_l, bottom_r, top_r, top_l;
+    bool isFoundBl=false, isFoundBr=false, isFoundTr=false, isFoundTl=false;
+
+    center.x = (points[0].x+points[1].x+points[2].x+points[3].x)/4;
+    center.y = (points[0].y+points[1].y+points[2].y+points[3].y)/4;
+
+    for(int i = 0; i < points.size();i++){
+    if(((points[i].x-center.x)<0)&&((points[i].y-center.y)>0)&&(!isFoundBl)){
+        bottom_l = points[i];
+        isFoundBl = true;
+        continue;
+    }
+    else if(((points[i].x-center.x)>0)&&((points[i].y-center.y)>0)&&(!isFoundBr)){
+        bottom_r = points[i];
+        isFoundBr = true;
+        continue;
+    }
+    else if(((points[i].x-center.x)>0)&&((points[i].y-center.y)<0)&&(!isFoundTr)){
+        top_r = points[i];
+        isFoundTr = true;
+        continue;
+    }
+    else if(((points[i].x-center.x)<0)&&((points[i].y-center.y)<0)&&(!isFoundTl)){
+        top_l = points[i];
+        isFoundTl = true;
+        continue;
+    }
+    else{
+        std::cout<<"Point sorting error : it's not quadrilateral."<<std::endl;
+        return false;
+    }
+    }
     points.clear();
-    points.push_back(min_y);
-    points.push_back(min_x);
-    points.push_back(max_y);
-    points.push_back(max_x);
+    points.push_back(bottom_l);
+    points.push_back(bottom_r);
+    points.push_back(top_r);
+    points.push_back(top_l);
     return true;
 }
 Point2f CLC::GetIntersectPoint(const Point2f &p1, const Point2f &p2, const Point2f &p3, const Point2f &p4)
@@ -96,8 +134,68 @@ bool CLC::FindProxyQuadrilateral()
     quadCentered.points.push_back(u2); quadCentered.points.push_back(u3);
     return true;
 }
+bool CLC::CalcPnP(Vector3d &trans, Matrix3d &rot)
+{
+    Point2f inputQuad[4];
+    // Output Quadilateral or World plane coordinates
+    Point2f outputQuad[4];
 
-bool CLC::CalcCLC(Vector3d &trans, Quaternion<double> &q)
+    // Lambda Matrix
+    Mat H;
+
+    // The 4 points that select quadilateral on the input , from top-left in clockwise order
+    // These four pts are the sides of the rect box used as input
+    double m = 0.1818175 , phi = 0.61546*2;
+
+    inputQuad[0] = Point2f( m, 0 );
+    inputQuad[1] = Point2f( m*cos(phi), m*sin(phi) );
+    inputQuad[2] = Point2f( -m, 0 );
+    inputQuad[3] = Point2f( -m*cos(phi), -m*sin(phi) );
+
+    outputQuad[0] = Point2f( quadOffCentered.points[0].x, quadOffCentered.points[0].y );
+    outputQuad[1] = Point2f( quadOffCentered.points[1].x, quadOffCentered.points[1].y );
+    outputQuad[2] = Point2f( quadOffCentered.points[2].x, quadOffCentered.points[2].y );
+    outputQuad[3] = Point2f( quadOffCentered.points[3].x, quadOffCentered.points[3].y );
+
+    // Get the Perspective Transform Matrix i.e. lambda
+    H = getPerspectiveTransform( inputQuad, outputQuad );
+
+    // Intrinsic
+    cv::Mat K = (cv::Mat_<double>(3, 3) <<
+                         fx,  0, cx,
+                          0, fy, cy,
+                          0,  0,  1
+                     );
+    H = K.inv()*H;
+    cv::Mat pose;
+    pose = Mat::eye(3, 4, CV_32FC1);      // 3x4 matrix, the camera pose
+    float norm1 = (float)norm(H.col(0));
+    float norm2 = (float)norm(H.col(1));
+    float tnorm = (norm1 + norm2) / 2.0f; // Normalization value
+
+
+    cv::normalize(H.col(0), pose.col(0));   // Normalize the rotation, and copies the column to pose
+
+    cv::normalize(H.col(1),  pose.col(1));   // Normalize the rotation and copies the column to pose
+
+
+    Mat p3 = pose.col(0).cross(pose.col(1));   // Computes the cross-product of p1 and p2
+    Mat c2 = pose.col(2);    // Pointer to third column of pose
+    p3.copyTo(pose.col(2));       // Third column is the crossproduct of columns one and two
+
+    H.col(2).copyTo(pose.col(3)) /*/ tnorm*/;  //vector t [R|t] is the last column of pose
+    pose.col(3) = pose.col(3)/tnorm;
+
+    // Map the OpenCV matrix with Eigen:
+
+    rot << pose.at<float>(0,0), pose.at<float>(0,1), pose.at<float>(0,2),
+            pose.at<float>(1,0), pose.at<float>(1,1), pose.at<float>(1,2),
+            pose.at<float>(2,0), pose.at<float>(2,1), pose.at<float>(2,2);
+
+    trans << pose.at<float>(0,3), pose.at<float>(1,3), pose.at<float>(2,3) ;
+
+}
+bool CLC::CalcCLC(Vector3d &trans, Matrix3d &rot)
 {
 	//determinate that the projective quadrilateral is rectangle in real world
     double l0 = sqrt(pow((quadCentered.points[0].x - um.x), 2) + pow((quadCentered.points[0].y - um.y), 2));
@@ -112,10 +210,10 @@ bool CLC::CalcCLC(Vector3d &trans, Quaternion<double> &q)
     
     bool D = ( (beta >= ( (1-alpha0)/(1+alpha1) )) && (1 >= fabs(alpha1/alpha0) )) || ( (beta <= ( (1-alpha0)/(1+alpha1) )) && (1 <= fabs(alpha1/alpha0) ));
     cout<<"determinant: "<<D<<endl;
-    if(!D){
-        std::cout<<"Couldn't pass the determinant."<<std::endl;
-        return false;
-    }
+//    if(!D){
+//        std::cout<<"Couldn't pass the determinant."<<std::endl;
+//        return false;
+//    }
 
     double d = sqrt((pow((1 - alpha1)*beta, 2) - pow(1 - alpha0, 2)) / (pow((1 - alpha1)*alpha0*beta, 2) - pow((1 - alpha0)*alpha1, 2)));
     
@@ -135,7 +233,67 @@ bool CLC::CalcCLC(Vector3d &trans, Quaternion<double> &q)
     d=1;
     Point3d pc(d *cos(theta0)*sin(phi) / sin(phi), -d *cos(theta0)*cos(phi) + cos(theta1) / sin(phi), d *sin(theta0)*sin(theta1)*sin(rho) / sin(phi));
     cout << "Principle point :\n" << pc << endl;
-        
+
+#if 1
+    Point2f inputQuad[4];
+    // Output Quadilateral or World plane coordinates
+    Point2f outputQuad[4];
+
+    // Lambda Matrix
+    Mat H;
+
+    // The 4 points that select quadilateral on the input , from top-left in clockwise order
+    // These four pts are the sides of the rect box used as input
+    double m = 0.1818175 /*, phi = 0.61546*2*/;
+
+    inputQuad[0] = Point2f( m, 0 );
+    inputQuad[1] = Point2f( m*cos(phi), m*sin(phi) );
+    inputQuad[2] = Point2f( -m, 0 );
+    inputQuad[3] = Point2f( -m*cos(phi), -m*sin(phi) );
+
+    outputQuad[0] = Point2f( quadOffCentered.points[0].x, quadOffCentered.points[0].y );
+    outputQuad[1] = Point2f( quadOffCentered.points[1].x, quadOffCentered.points[1].y );
+    outputQuad[2] = Point2f( quadOffCentered.points[2].x, quadOffCentered.points[2].y );
+    outputQuad[3] = Point2f( quadOffCentered.points[3].x, quadOffCentered.points[3].y );
+
+    // Get the Perspective Transform Matrix i.e. lambda
+    H = getPerspectiveTransform( inputQuad, outputQuad );
+
+    // Intrinsic
+    cv::Mat K = (cv::Mat_<double>(3, 3) <<
+                         fx,  0, cx,
+                          0, fy, cy,
+                          0,  0,  1
+                     );
+    H = K.inv()*H;
+    cv::Mat pose;
+    pose = Mat::eye(3, 4, CV_32FC1);      // 3x4 matrix, the camera pose
+    float norm1 = (float)norm(H.col(0));
+    float norm2 = (float)norm(H.col(1));
+    float tnorm = (norm1 + norm2) / 2.0f; // Normalization value
+
+
+    cv::normalize(H.col(0), pose.col(0));   // Normalize the rotation, and copies the column to pose
+
+    cv::normalize(H.col(1),  pose.col(1));   // Normalize the rotation and copies the column to pose
+
+
+    Mat p3 = pose.col(0).cross(pose.col(1));   // Computes the cross-product of p1 and p2
+    p3.copyTo(pose.col(2));       // Third column is the crossproduct of columns one and two
+
+    H.col(2).copyTo(pose.col(3)) /*/ tnorm*/;  //vector t [R|t] is the last column of pose
+    pose.col(3) = pose.col(3)/tnorm;
+
+    // Map the OpenCV matrix with Eigen:
+
+    rot << pose.at<float>(0,0), pose.at<float>(0,1), pose.at<float>(0,2),
+            pose.at<float>(1,0), pose.at<float>(1,1), pose.at<float>(1,2),
+            pose.at<float>(2,0), pose.at<float>(2,1), pose.at<float>(2,2);
+
+    trans << pose.at<float>(0,3), pose.at<float>(1,3), pose.at<float>(2,3) ;
+#endif
+#if 0
+///Perspective-to-Euclidean transformation
     Point2f vecTranslate;
     double t0, t1, s0, s1;
     Point2f us0, us1;
@@ -148,8 +306,8 @@ bool CLC::CalcCLC(Vector3d &trans, Quaternion<double> &q)
     s1 = GetDistance(us1, um) / l1;
 
     t0 = s0*m*(l0 + l2) / (s0*m*l0 + ((1 - s0)*m+m)*l2);
-    t0 = s1*m*(l1 + l3) / (s1*m*l1 + ((1 - s1)*m+m)*l3);
-        
+    t1 = s1*m*(l1 + l3) / (s1*m*l1 + ((1 - s1)*m+m)*l3);
+
     vecTranslate.x = t0 + t1*cos(phi);
     vecTranslate.y = (t1)*sin(phi);
     
@@ -157,17 +315,27 @@ bool CLC::CalcCLC(Vector3d &trans, Quaternion<double> &q)
     trans[1]=pc.y;
     trans[2]=pc.z;
     
-    Vector3d N1(pc.x, pc.y, pc.z);
+    Vector3d N1(-pc.x, -pc.y, -pc.z);
     Vector3d N2(0, 0, 1);
     N1.normalize(), N2.normalize();
-    q = Quaternion<double>::FromTwoVectors(N1, N2);
+    Vector3d u = N1.cross(N2);
+    u.normalize();
+    double alpha = acos(N1.dot(N2)/(N1.norm()*N2.norm()));
+    Quaternion<double> q;
+    q = AngleAxis<double>(cos(0.5*alpha), sin(0.5*alpha)*u);
+;
+    //q = Quaternion<double>::FromTwoVectors(N1, N2);
     //(angle, axis.x, axis.y, axis.z);
     q.normalize();
-    
-    std::cout << "q: " << q.x() << ", " << q.y() << ", " << q.z() << ", " << q.w() << std::endl;
+    rot = q.matrix();
+    //std::cout << "q: " << q.x() << ", " << q.y() << ", " << q.z() << ", " << q.w() << std::endl;
+    std::cout << q.matrix()<<std::endl;
     std::cout << "vector translate:\n" << vecTranslate.x << ", " << vecTranslate.y << std::endl;
+    //std::cout << lambda <<std::endl;
+#endif
     return true;
 }
+
 void CLC::Visualization(cv::Mat &out)
 {
     line(out, quadOffCentered.points[0], quadOffCentered.points[1], Scalar(0,255,0));
@@ -196,320 +364,6 @@ void CLC::Visualization(cv::Mat &out)
     
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#define DEG2RAD 0.017453293f
-int thresh = 50, N = 1;
-const char* wndname = "Square Detection Demo";
-double CLC::angle( Point2f pt1, Point2f pt2, Point2f pt0 )
-{
-    double dx1 = pt1.x - pt0.x;
-    double dy1 = pt1.y - pt0.y;
-    double dx2 = pt2.x - pt0.x;
-    double dy2 = pt2.y - pt0.y;
-    return (dx1*dx2 + dy1*dy2)/sqrt((dx1*dx1 + dy1*dy1)*(dx2*dx2 + dy2*dy2) + 1e-10);
-}
-struct LinePolar
-{
-    float rho;
-    float angle;
-};
-
-
-struct hough_cmp_gt
-{
-    hough_cmp_gt(const int* _aux) : aux(_aux) {}
-    bool operator()(int l1, int l2) const
-    {
-        return aux[l1] > aux[l2] || (aux[l1] == aux[l2] && l1 < l2);
-    }
-    const int* aux;
-};
-static void
-HoughLinesStandard( const Mat& img, float rho, float theta,
-                   int threshold, std::vector<Vec2f>& lines, int linesMax,
-                   double min_theta, double max_theta )
-{
-    int i, j;
-    float irho = 1 / rho;
-    
-    CV_Assert( img.type() == CV_8UC1 );
-    
-    const uchar* image = img.ptr();
-    int step = (int)img.step;
-    int width = img.cols;
-    int height = img.rows;
-    
-    if (max_theta < min_theta ) {
-        CV_Error( CV_StsBadArg, "max_theta must be greater than min_theta" );
-    }
-    int numangle = cvRound((max_theta - min_theta) / theta);
-    int numrho = cvRound(((width + height) * 2 + 1) / rho);
-    
-    AutoBuffer<int> _accum((numangle+2) * (numrho+2));
-    std::vector<int> _sort_buf;
-    AutoBuffer<float> _tabSin(numangle);
-    AutoBuffer<float> _tabCos(numangle);
-    int *accum = _accum;
-    float *tabSin = _tabSin, *tabCos = _tabCos;
-    
-    memset( accum, 0, sizeof(accum[0]) * (numangle+2) * (numrho+2) );
-    
-    float ang = static_cast<float>(min_theta);
-    for(int n = 0; n < numangle; ang += theta, n++ )
-    {
-        tabSin[n] = (float)(sin((double)ang) * irho);
-        tabCos[n] = (float)(cos((double)ang) * irho);
-    }
-    
-    // stage 1. fill accumulator
-    for( i = 0; i < height; i++ )
-        for( j = 0; j < width; j++ )
-        {
-            if( image[i * step + j] != 0 )
-                for(int n = 0; n < numangle; n++ )
-                {
-                    int r = cvRound( j * tabCos[n] + i * tabSin[n] );
-                    r += (numrho - 1) / 2;
-                    accum[(n+1) * (numrho+2) + r+1]++;
-                }
-        }
-    
-    // stage 2. find local maximums
-    for(int r = 0; r < numrho; r++ )
-        for(int n = 0; n < numangle; n++ )
-        {
-            int base = (n+1) * (numrho+2) + r+1;
-            if( accum[base] > threshold &&
-               accum[base] > accum[base - 1] && accum[base] >= accum[base + 1] &&
-               accum[base] > accum[base - numrho - 2] && accum[base] >= accum[base + numrho + 2] )
-                _sort_buf.push_back(base);
-        }
-    
-    // stage 3. sort the detected lines by accumulator value
-    std::sort(_sort_buf.begin(), _sort_buf.end(), hough_cmp_gt(accum));
-    
-    // stage 4. store the first min(total,linesMax) lines to the output buffer
-    linesMax = std::min(linesMax, (int)_sort_buf.size());
-    double scale = 1./(numrho+2);
-    for( i = 0; i < linesMax; i++ )
-    {
-        LinePolar line;
-        int idx = _sort_buf[i];
-        int n = cvFloor(idx*scale) - 1;
-        int r = idx - (n+1)*(numrho+2) - 1;
-        line.rho = (r - (numrho - 1)*0.5f) * rho;
-        line.angle = static_cast<float>(min_theta) + n * theta;
-        lines.push_back(Vec2f(line.rho, line.angle));
-    }
-}
-
-void OPENCVHT_findSquares( const Mat& image, vector<vector<Point2f> >& squares ){
-    squares.clear();
-    
-    Mat grayImg, binImg, edgeImg;
-    Mat dst;
-    image.copyTo(dst);
-    cvtColor(image, grayImg, CV_BGR2GRAY);
-    threshold(grayImg, binImg, 150, 255, THRESH_OTSU);
-    Canny(binImg, edgeImg, 100, 100, 3);
-    
-    vector<Vec2f> lines;
-    //HoughLines(edgeImg, lines, 1, CV_PI/360, 30, 0, 0 );
-    
-    HoughLinesStandard(edgeImg, 1, CV_PI/360, 30, lines, INT_MAX, 0, CV_PI);
-
-    vector<Point2d> crossPoints;
-    
-    RNG rng(53242);
-    crossPoints.clear();
-    for( size_t i = 0; i < lines.size(); i++ )
-        for(size_t j =0 ; j < lines.size(); j++)
-        {
-            float rho0 = lines[i][0], theta0 = lines[i][1];
-            Point pt1, pt2, pt3, pt4;
-            double a0 = cos(theta0), b0 = sin(theta0);
-            double x0 = a0*rho0, y0 = b0*rho0;
-            pt1.x = cvRound(x0 + 1000*(-b0));
-            pt1.y = cvRound(y0 + 1000*(a0));
-            pt2.x = cvRound(x0 - 1000*(-b0));
-            pt2.y = cvRound(y0 - 1000*(a0));
-            if(i!=j){
-                float rho1 = lines[j][0], theta1 = lines[j][1];
-                double a1 = cos(theta1), b1 = sin(theta1);
-                double x1 = a1*rho1, y1 = b1*rho1;
-                pt3.x = cvRound(x1 + 1000*(-b1));
-                pt3.y = cvRound(y1 + 1000*(a1));
-                pt4.x = cvRound(x1 - 1000*(-b1));
-                pt4.y = cvRound(y1 - 1000*(a1));
-                //crossPoints.push_back(GetIntersectPoint(Point2d(pt1.x, pt1.y), Point2d(pt2.x, pt2.y), Point2d(pt3.x, pt3.y), Point2d(pt4.x, pt4.y)));
-                line( dst, pt3, pt4, Scalar(rng.uniform(0,255), rng.uniform(0,255), rng.uniform(0,255)), 1, CV_AA);
-            }
-            if(i==0){
-                //line( dst, pt1, pt2, Scalar(0,0,255), 1, CV_AA);
-            }
-        }
-    for(size_t i =0 ; i < crossPoints.size(); i++){
-        Point tmp;
-        tmp.x=cvRound(crossPoints[i].x);
-        tmp.y=cvRound(crossPoints[i].y);
-        //circle(dst, tmp, 5, cv::Scalar(0, 255, 0), 4, 5);
-    }
-    imshow("test",dst);
-    waitKey(1);
-    
-}
-
-
-void HT_findSquares( const Mat& image, vector<vector<Point2f> >& squares )
-{
-    
-    Mat res, points, labels, centers;
-    int x, y, n, nPoints;
-    
-    Mat grayImg, binImg, edgeImg;
-    cvtColor(image, grayImg, CV_BGR2GRAY);
-    threshold(grayImg, binImg, 150, 255, THRESH_OTSU);
-    Canny(binImg, edgeImg, 100, 100, 3);
-    int w = edgeImg.cols;
-    int h = edgeImg.rows;
-    int threshold;
-    
-    //Create the accu
-    double hough_h = ((sqrt(2.0) * (double)max(h,w)) / 2.0);
-    int _accu_h = hough_h * 2.0; // [-r, +r]
-    int _accu_w = 360;
-    Mat accu(_accu_h, _accu_w, CV_32SC1);
-    unsigned int *_accu = new unsigned int[_accu_h*_accu_w];
-    
-    double center_x = w/2;
-    double center_y = h/2;
-    
-    
-    for(int y=0;y<h;y++)
-    {
-        for(int x=0;x<w;x++)
-        {
-            if( edgeImg.data[ (y*w) + x] > 250 )
-            {
-                for(int t=0;t<360;t++)
-                {
-                    double r = ( ((double)x - center_x) * cos((double)t * DEG2RAD)) + (((double)y - center_y) * sin((double)t * DEG2RAD));
-                    //accu.data[(int)((round(r + hough_h ) * 360)) + t]++;
-                    _accu[ (int)((round(r + hough_h ) * 360)) + t]++;
-                }
-            }
-        }
-    }
-    
-    threshold = 10;
-    if(threshold == 0)
-        threshold = w>h?w/4:h/4;
-    unsigned int *thres_accu = new unsigned int[_accu_h*_accu_w];
-    cv::Mat img_res = image.clone();
-    
-    //Search the accumulator
-    std::vector< std::pair< std::pair<int, int>, std::pair<int, int> > > lines;
-    
-    if(_accu == 0){
-        cerr<<"the accumulator is null"<<endl;
-        return;
-    }
-    
-    for(int r=0;r<_accu_h;r++)
-    {
-        for(int t=0;t<_accu_w;t++)
-        {
-            if((int)_accu[(r*_accu_w) + t] >= threshold)
-            {
-                thres_accu[(r*_accu_w) + t] = _accu[(r*_accu_w) + t];
-                //Is this point a local maxima (9x9)
-                /*int max = _accu[(r*_accu_w) + t];
-                 for(int ly=-4;ly<=4;ly++)
-                 {
-                 for(int lx=-4;lx<=4;lx++)
-                 {
-                 if( (ly+r>=0 && ly+r<_accu_h) && (lx+t>=0 && lx+t<_accu_w)  )
-                 {
-                 if( (int)_accu[( (r+ly)*_accu_w) + (t+lx)] > max )
-                 {
-                 max = _accu[( (r+ly)*_accu_w) + (t+lx)];
-                 ly = lx = 5;
-                 }
-                 }
-                 }
-                 }
-                 if(max > (int)_accu[(r*_accu_w) + t])
-                 continue;
-                 */
-                
-                int x1, y1, x2, y2;
-                x1 = y1 = x2 = y2 = 0;
-                
-                if(t >= 45 && t <= 135)
-                {
-                    //y = (r - x cos(t)) / sin(t)
-                    x1 = 0;
-                    y1 = ((double)(r-(_accu_h/2)) - ((x1 - (w/2) ) * cos(t * DEG2RAD))) / sin(t * DEG2RAD) + (h / 2);
-                    x2 = w - 0;
-                    y2 = ((double)(r-(_accu_h/2)) - ((x2 - (w/2) ) * cos(t * DEG2RAD))) / sin(t * DEG2RAD) + (h / 2);
-                }
-                else
-                {
-                    //x = (r - y sin(t)) / cos(t);
-                    y1 = 0;
-                    x1 = ((double)(r-(_accu_h/2)) - ((y1 - (h/2) ) * sin(t * DEG2RAD))) / cos(t * DEG2RAD) + (w / 2);
-                    y2 = h - 0;
-                    x2 = ((double)(r-(_accu_h/2)) - ((y2 - (h/2) ) * sin(t * DEG2RAD))) / cos(t * DEG2RAD) + (w / 2);
-                }
-                
-                lines.push_back(std::pair< std::pair<int, int>, std::pair<int, int> >(std::pair<int, int>(x1,y1), std::pair<int, int>(x2,y2)));
-                
-            }
-        }
-    }
-    
-    std::cout << "lines: " << lines.size() << " " << threshold << std::endl;
-    
-    //Draw the results
-    std::vector< std::pair< std::pair<int, int>, std::pair<int, int> > >::iterator it;
-    RNG rng(12345);
-    for(it=lines.begin();it!=lines.end();it++)
-    {
-        cv::line(img_res, cv::Point(it->first.first, it->first.second), cv::Point(it->second.first, it->second.second), Scalar(rng.uniform(0,255), rng.uniform(0,255), rng.uniform(0,255)), 1, 8);
-    }
-    
-    //Visualize all
-    int maxa = 0;
-    for(int p=0;p<(_accu_h*_accu_w);p++)
-    {
-        if((int)_accu[p] > maxa)
-            maxa = thres_accu[p];
-    }
-    double contrast = 5.0;
-    double coef = 255.0 / (double)maxa * contrast;
-    
-    cv::Mat img_accu(_accu_h, _accu_w, CV_8UC3);
-    for(int p=0;p<(_accu_h*_accu_w);p++)
-    {
-        unsigned char c = (double)_accu[p] * coef < 255.0 ? (double)_accu[p] * coef : 255.0;
-        img_accu.data[(p*3)+0] = 255;
-        img_accu.data[(p*3)+1] = 255-c;
-        img_accu.data[(p*3)+2] = 255;
-    }
-
-
-    cv::imshow("lines", img_res);
-    //cv::imshow("edges", edgeImg);
-    cv::imshow("accumulator", img_accu);
-    //cv::imshow("mat_accu",accu);
-}
-
 void CLC::findSquares( const Mat& image, vector<vector<Point2f> >& squares )
 {
     squares.clear();
@@ -523,7 +377,7 @@ void CLC::findSquares( const Mat& image, vector<vector<Point2f> >& squares )
     assert(image.type() == CV_8UC3);
 
     inRange(image, Scalar(0, 85, 130), Scalar(20,120, 200), binImg);
-    
+
     /// Parameters for Shi-Tomasi algorithm
     vector<Point> corners;
 
@@ -532,11 +386,11 @@ void CLC::findSquares( const Mat& image, vector<vector<Point2f> >& squares )
     int blockSize = 5;
     bool useHarrisDetector = true;
     double k = 0.04;
-    
+
     /// Copy the source image
     Mat copy;
     copy = image.clone();
-    
+
     /// Apply corner detection
     goodFeaturesToTrack( binImg,
                         corners,
@@ -547,8 +401,8 @@ void CLC::findSquares( const Mat& image, vector<vector<Point2f> >& squares )
                         blockSize,
                         useHarrisDetector,
                         k );
-    
-   
+
+
     /// Draw corners detected
     cout<<"** Number of corners detected: "<<corners.size()<<endl;
     vector<Point> contours_poly( corners.size() );
@@ -556,11 +410,11 @@ void CLC::findSquares( const Mat& image, vector<vector<Point2f> >& squares )
     int r = 4;
     for( int i = 0; i < corners.size(); i++ )
     { //circle( copy, corners[i], r, Scalar(rng.uniform(0,255), rng.uniform(0,255),
-      //                                    rng.uniform(0,255)), -1, 8, 0 ); 
+      //                                    rng.uniform(0,255)), -1, 8, 0 );
 
 
-circle( copy, contours_poly[i], r, Scalar(rng.uniform(0,255), rng.uniform(0,255),rng.uniform(0,255)), -1, 8, 0 ); 
-       
+circle( copy, contours_poly[i], r, Scalar(rng.uniform(0,255), rng.uniform(0,255),rng.uniform(0,255)), -1, 8, 0 );
+
 }
 
 //drawContours( copy, contours_poly, i, Scalar(rng.uniform(0,255), rng.uniform(0,255),rng.uniform(0,255)), 1, 8, vector<Vec4i>(), 0, Point() );
@@ -569,91 +423,18 @@ circle( copy, contours_poly[i], r, Scalar(rng.uniform(0,255), rng.uniform(0,255)
     /// Show what you got
     namedWindow( "corner", CV_WINDOW_AUTOSIZE );
     imshow( "corner", copy );
-    
+
     /// Set the neeed parameters to find the refined corners
     Size winSize = Size( 5, 5 );
     Size zeroZone = Size( -1, -1 );
     TermCriteria criteria = TermCriteria( CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 40, 0.001 );
-    
+
     /// Calculate the refined corner locations
     //cornerSubPix( binImg, contours_poly, winSize, zeroZone, criteria );
-    
+
 imshow("corner",copy);
     waitKey(1);
 }
-//void OPENCV_findSquares( const Mat& image, vector<vector<Point2f> >& squares ){
-//    Mat binImg;
-//    RNG rng(1234);
-//    cv::Mat orangeOnly;
-//    cv::Mat copy = image.clone();
-//    assert(image.type() == CV_8UC3);
-
-//    inRange(image, Scalar(0, 85, 130), Scalar(20,120, 200), binImg);
-//    imshow("bin", binImg);
-//    vector<vector<Point> > contours;
-
-//    // find contours and store them all as a list
-//    findContours(binImg, contours, RETR_LIST, CV_CHAIN_APPROX_SIMPLE);
-    
-//    vector<Point> approx;
-    
-//    // test each contour
-//    for( size_t i = 0; i < contours.size(); i++ )
-//    {
-//        // approximate contour with accuracy proportional
-//        // to the contour perimeter
-//        approxPolyDP(Mat(contours[i]), approx, arcLength(Mat(contours[i]), true)*0.01, true);
-        
-//        // square contours should have 4 vertices after approximation
-//        // relatively large area (to filter out noisy contours)
-//        // and be convex.
-//        // Note: absolute value of an area is used because
-//        // area may be positive or negative - in accordance with the
-//        // contour orientation
-//        if( approx.size() == 4 &&
-//           fabs(contourArea(Mat(approx))) > 10 &&
-//           isContourConvex(Mat(approx)) )
-//        {
-//            double maxCosine = 0;
-            
-//            for( int j = 2; j < 5; j++ )
-//            {
-//                // find the maximum cosine of the angle between joint edges
-//                double cosine = fabs(angle(approx[j%4], approx[j-2], approx[j-1]));
-//                maxCosine = MAX(maxCosine, cosine);
-//            }
-            
-//            // if cosines of all angles are small
-//            // (all angles are ~90 degree) then write quandrange
-//            // vertices to resultant sequence
-//            //if( maxCosine < 0.5 )
-//            circle( copy, approx[0], 4, Scalar(rng.uniform(0,255), rng.uniform(0,255), rng.uniform(0,255)), -1, 8, 0 );
-//            circle( copy, approx[1], 4, Scalar(rng.uniform(0,255), rng.uniform(0,255), rng.uniform(0,255)), -1, 8, 0 );
-//            circle( copy, approx[2], 4, Scalar(rng.uniform(0,255), rng.uniform(0,255), rng.uniform(0,255)), -1, 8, 0 );
-//            circle( copy, approx[3], 4, Scalar(rng.uniform(0,255), rng.uniform(0,255), rng.uniform(0,255)), -1, 8, 0 );
-//            vector<Point2f> SubPixs;
-//            //imshow("view", copy);
-//            for(int i = 0; i < 4; i++){
-//                Point2f tmp;
-//                tmp.x = approx[i].x;
-//                tmp.y = approx[i].y;
-//                SubPixs.push_back(tmp);
-//            }
-
-//            /// Calculate the refined corner locations
-//            Size winSize = Size( 5, 5 );
-//            Size zeroZone = Size( -1, -1 );
-//            TermCriteria criteria = TermCriteria( CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 40, 0.001 );
-//            Mat gray;
-//            cvtColor(image, gray, CV_BGR2GRAY);
-//            cornerSubPix( gray, SubPixs, winSize, zeroZone, criteria );
-//            squares.push_back(SubPixs);
-//        }
-//    }
-
-//    //waitKey(0);
-//}
-
 void CLC::drawSquares( Mat& image, const vector<vector<Point2f> >& squares )
 {
     for( size_t i = 0; i < squares.size(); i++ )

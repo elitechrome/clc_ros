@@ -17,10 +17,7 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
         CLC clc;
         //clc.findSquares(image, squares);
         double l = 0.1818175, phi = 0.61546*2;
-//        cv::Mat V1 = (cv::Mat_<double>(4, 1) << -l*cos(phi/2), -l*sin(phi/2), 0.000001, 1);
-//        cv::Mat V2 = (cv::Mat_<double>(4, 1) << l*cos(phi/2), -l*sin(phi/2), 0.000001, 1);
-//        cv::Mat V3 = (cv::Mat_<double>(4, 1) << l*cos(phi/2), l*sin(phi/2), 0.000001, 1);
-//        cv::Mat V4 = (cv::Mat_<double>(4, 1) << -l*cos(phi/2), l*sin(phi/2), 0.000001, 1);
+
         cv::Mat V1 = (cv::Mat_<double>(4, 1) << l, 0, 0.000001, 1);
         cv::Mat V2 = (cv::Mat_<double>(4, 1) << l*cos(phi), l*sin(phi), 0.000001, 1);
         cv::Mat V3 = (cv::Mat_<double>(4, 1) << -l, 0, 0.000001, 1);
@@ -58,7 +55,7 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
             tf::Vector3 trans = transform.getOrigin();
 
 
-            cv::Mat R = (cv::Mat_<double>(3, 3) <<
+            cv::Mat R = (cv::Mat_<double>(3, 3)    <<
             rot[0][0], rot[0][1], rot[0][2],
             rot[1][0], rot[1][1], rot[1][2],
             rot[2][0], rot[2][1], rot[2][2]
@@ -67,9 +64,10 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
             cv::Mat tvec = (cv::Mat_<double>(3, 1) << trans[0],trans[1],trans[2]);
             R.copyTo(extrinsic.rowRange(0, 3).colRange(0, 3));
             tvec.copyTo(extrinsic.rowRange(0, 3).col(3));
-            std::cout << tvec  <<std::endl;
-            tf::Quaternion rot_qt = transform.getRotation();
-            std::cout << "tf_quaternion: " <<rot_qt.getX()<<","<<rot_qt.getY()<<","<<rot_qt.getZ()<< "," <<rot_qt.getW()<< std::endl;
+            std::cout << "extrinsic(tf):\n" << extrinsic  <<std::endl;
+            //tf::Quaternion rot_qt = transform.getRotation();
+            std::cout << "t(tf):\n" << (-R.inv()*tvec).t() <<std::endl;
+            //std::cout << "tf_quaternion: " <<rot_qt.getX()<<","<<rot_qt.getY()<<","<<rot_qt.getZ()<< "," <<rot_qt.getW()<< std::endl;
         }
         catch (tf::TransformException ex){
             ROS_ERROR("%s",ex.what());
@@ -104,9 +102,18 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
             tmp_square.push_back(squares[i][3]);
             clc.SetOffCenteredQuad(tmp_square);
             clc.FindProxyQuadrilateral();
-            Vector3d trans; Quaternion<double> q;
-            if(clc.CalcCLC(trans, q))
+            Vector3d trans_pnp, trans_clc;
+            Quaternion<double> q; Matrix3d rot_pnp, rot_clc;
+
+            clc.CalcPnP(trans_pnp, rot_pnp);
+            if(clc.CalcCLC(trans_clc, rot_clc)){
                 clc.Visualization(image);
+
+            }
+            std::cout<<std::endl<<"R_pnp\n"<<rot_pnp<<std::endl;
+            std::cout<<"R_CLC\n"<<rot_clc<<std::endl;
+            std::cout<<std::endl<<"t_pnp\n"<<trans_pnp<<std::endl;
+            std::cout<<"t_CLC\n"<<trans_clc   <<std::endl;
         }
 
         imshow("view", image);

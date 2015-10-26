@@ -1,4 +1,5 @@
 #include <opencv2/opencv.hpp>
+//#include <opencv2/core/eigen.hpp>
 #include <vector>
 #include <Eigen/Eigen>
 //Todo : use only OpenCV or Eigen to manipulate vectors/quaternions.
@@ -30,7 +31,8 @@ public:
 public:
     bool SetOffCenteredQuad(vector<Point2f> &points);
     bool FindProxyQuadrilateral();
-    bool CalcCLC(Vector3d &trans, Quaternion<double> &q);
+    bool CalcPnP(Vector3d &trans, Matrix3d &rot);
+    bool CalcCLC(Vector3d &trans, Matrix3d &rot);
     void Visualization(Mat &out);
     
 private:
@@ -42,4 +44,8 @@ private:
     Point2d w0, w1;
     Point2d u0, u1, u2, u3;
     Point2d wd0, wd1, wm;
+    double fx;
+    double fy;
+    double cx;
+    double cy;
 };

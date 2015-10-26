@@ -3,7 +3,7 @@
   <!-- these are the arguments you can pass this launch file, for example paused:=true -->
   <arg name="paused" default="false"/>
   <arg name="use_sim_time" default="false"/>
-  <arg name="gui" default="false"/>
+  <arg name="gui" default="true"/>
   <arg name="headless" default="false"/>
   <arg name="debug" default="false"/>
 
@@ -37,7 +37,7 @@
 
   <!-- load the controllers -->
   <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
-    output="screen" ns="/rrbot" args="joint1_position_controller joint2_position_controller joint_state_controller"/>
+    output="screen" ns="/rrbot" args="joint1_position_controller joint2_position_controller joint3_position_controller joint_state_controller"/>
 
 
 </launch>
